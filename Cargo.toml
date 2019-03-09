@@ -1,0 +1,21 @@
+[package]
+name = "join-tests"
+version = "0.0.4"
+authors = ["Jackie Bredenberg <jamb@mit.edu>"]
+
+documentation = "https://docs.rs/nom-sql"
+homepage = "https://github.com/ms705/nom-sql"
+repository = "https://github.com/ms705/nom-sql.git"
+
+description = "Rough code to test outer join effects on efficiency."
+
+license = "MIT"
+
+[dependencies]
+serde = "1.0"
+serde_derive = "1.0"
+nom = "^3.2.1"
+nom-sql = "0.0.4"
+
+[dev-dependencies]
+pretty_assertions = "0.5.1"
