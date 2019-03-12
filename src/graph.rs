@@ -1,7 +1,9 @@
 extern crate nom_sql;
 
 use nom_sql::SqlQuery;
-use nom_sql::{SelectStatement, FieldDefinitionExpression};
+use nom_sql::{SelectStatement, CreateTableStatement, CreateViewStatement, FieldDefinitionExpression};
+
+use std::collections::HashMap;
 
 
 
@@ -11,6 +13,7 @@ pub struct Column {
 }
 
 pub struct TestNode {
+    pub name: String,
     pub data: TestNodeData,
     pub columns: Vec<Column>,
     pub ancestors: Vec<TestNode>,
@@ -26,7 +29,7 @@ pub enum TestNodeData {
     },*/
     /// column specifications, keys (non-compound)
     Base {
-        column_specs: Vec<(Column, Option<usize>)>,
+        column_specs: Vec<Column>,
         keys: Vec<Column>,
     },
     /// over column, group_by columns
@@ -96,6 +99,14 @@ pub enum TestNodeData {
 pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
     let mut parsed_ok = Vec::new();
     let mut parsed_err = 0;
+
+    let mut tables = HashMap::new();  // map <name:String, columns:Vec<String>>
+    let mut graph = Vec::new(); //Vec<TestNode>
+    /*schema.insert(
+        "users".into(),
+        vec!["id".into(), "name".into(), "age".into()],
+    );*/
+
     for query in queries.iter() {
         //println!("Trying to parse '{}': ", &query);
         match nom_sql::parser::parse_query(&query) {
@@ -103,10 +114,10 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
                 //println!("ok");
                 parsed_ok.push(query);
                 match q {
-                    SqlQuery::Select(ref select) => make_graph(select),
+                    SqlQuery::Select(ref select) => make_select(select, &tables, &mut graph),
                     SqlQuery::Insert(ref insert) => (),
-                    SqlQuery::CreateTable(ref create) => (),
-                    SqlQuery::CreateView(ref create) => (),
+                    SqlQuery::CreateTable(ref create) => make_table(create, &mut tables),
+                    SqlQuery::CreateView(ref create) => make_view(create, &mut graph),
                     SqlQuery::Delete(ref delete) => (),
                     SqlQuery::DropTable(ref drop) => (),
                     SqlQuery::Update(ref update) => (),
@@ -115,16 +126,26 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
                 }
             }
             Err(_) => {
-                //println!("failed");
+                println!("failed to parse '{}'", &query);
                 parsed_err += 1;
             }
         }
     }
-    
+
     (parsed_ok.len() as i32, parsed_err)
 }
 
-pub fn make_graph(s: &SelectStatement) -> () {
+pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, Vec<String>>) -> () {
+    let t: String = s.table.name.clone();
+    let fields = s.fields.clone()
+                  .into_iter()
+                  .map(|column_spec| column_spec.column.name.clone())
+                  .collect();
+    tables.insert(t, fields);
+    //println!("tables: {:?}", tables);
+}
+
+pub fn make_select(s: &SelectStatement, tables: &HashMap<String, Vec<String>>, graph: &mut Vec<TestNode>) -> () {
     println!("making graph for: {}", s);
     for field in s.fields.iter() {
         match field {
@@ -137,4 +158,8 @@ pub fn make_graph(s: &SelectStatement) -> () {
             _ => unimplemented!(),
         }
     }
+}
+
+pub fn make_view(s: &CreateViewStatement, graph: &mut Vec<TestNode>) -> () {
+    println!("making view for: {}", s);
 }
