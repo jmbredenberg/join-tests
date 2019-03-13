@@ -1,7 +1,8 @@
 extern crate nom_sql;
 
 use nom_sql::SqlQuery;
-use nom_sql::{SelectStatement, CreateTableStatement, CreateViewStatement, FieldDefinitionExpression};
+use nom_sql::{SelectStatement, SelectSpecification, CreateTableStatement, CreateViewStatement,
+    FieldDefinitionExpression};
 
 use std::collections::HashMap;
 
@@ -94,6 +95,7 @@ pub enum TestNodeData {
     Leaf {
         keys: Vec<Column>,
     },
+    UnimplementedNode,
 }
 
 pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
@@ -114,10 +116,12 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
                 //println!("ok");
                 parsed_ok.push(query);
                 match q {
-                    SqlQuery::Select(ref select) => make_select(select, &tables, &mut graph),
+                    SqlQuery::Select(ref select) => {
+                        make_select(select, &tables, &mut graph);
+                    },
                     SqlQuery::Insert(ref insert) => (),
                     SqlQuery::CreateTable(ref create) => make_table(create, &mut tables),
-                    SqlQuery::CreateView(ref create) => make_view(create, &mut graph),
+                    SqlQuery::CreateView(ref create) => make_view(create, &tables, &mut graph),
                     SqlQuery::Delete(ref delete) => (),
                     SqlQuery::DropTable(ref drop) => (),
                     SqlQuery::Update(ref update) => (),
@@ -145,7 +149,7 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, Vec<Str
     //println!("tables: {:?}", tables);
 }
 
-pub fn make_select(s: &SelectStatement, tables: &HashMap<String, Vec<String>>, graph: &mut Vec<TestNode>) -> () {
+pub fn make_select(s: &SelectStatement, tables: &HashMap<String, Vec<String>>, graph: &mut Vec<TestNode>) -> TestNode {
     println!("making graph for: {}", s);
     for field in s.fields.iter() {
         match field {
@@ -158,8 +162,30 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, Vec<String>>, g
             _ => unimplemented!(),
         }
     }
+    TestNode {
+        name: "unimplemented".to_string(),
+        data: TestNodeData::UnimplementedNode,
+        columns: Vec::new(),
+        ancestors: Vec::new(),
+        children: Vec::new(),
+    }  // TODO return something legit
 }
 
-pub fn make_view(s: &CreateViewStatement, graph: &mut Vec<TestNode>) -> () {
+pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, Vec<String>>, graph: &mut Vec<TestNode>) -> () {
     println!("making view for: {}", s);
+    match *(s.clone().definition) {
+        SelectSpecification::Compound(css) => unimplemented!(),
+        SelectSpecification::Simple(ss) => {
+            let select_node = make_select(&ss, tables, graph);
+            graph.push(TestNode {
+                name: s.name.clone(),
+                data: TestNodeData::Leaf {
+                    keys: Vec::new(),  // TODO what should this be? also columns
+                },
+                columns: Vec::new(),
+                ancestors: vec![select_node],
+                children: Vec::new(),
+            })
+        }
+    }
 }
