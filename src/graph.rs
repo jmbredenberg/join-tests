@@ -72,15 +72,11 @@ pub enum TestNodeData {
     LeftJoin,
     OuterJoin,
     /// emit columns
-    /*Project {
-        emit: Vec<Column>,
-        arithmetic: Vec<(String, ArithmeticExpression)>,
-        literals: Vec<(String, DataType)>,
-    },*/
+    Project,
     /// emit columns
-    Union {
+    /*Union {
         emit: Vec<Vec<Column>>,
-    },
+    },*/
     /// order function, group columns, k
     /*TopK {
         order: Option<Vec<(Column, OrderType)>>,
@@ -89,9 +85,9 @@ pub enum TestNodeData {
         offset: usize,
     },*/
     // Get the distinct element sorted by a specific column
-    Distinct {
+    /*Distinct {
         group_by: Vec<Column>,
-    },
+    },*/
     /// reuse another node
     Reuse,
     /// leaf (reader) node, keys
@@ -150,7 +146,6 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
     let mut tables = HashMap::new();  // map <name:String, basenode:TestNodeRef>
 
     for query in queries.iter() {
-        //println!("Trying to parse '{}': ", &query);
         match nom_sql::parser::parse_query(&query) {
             Ok(q) => {
                 //println!("ok");
@@ -218,23 +213,36 @@ pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef) -> TestNodeRef {
     )
 }
 
-pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
-    println!("making graph for: {}", s);
-    for field in s.fields.iter() {
-        match field {
-            FieldDefinitionExpression::All => println!("all: *"),
-            FieldDefinitionExpression::AllInTable(ref table) => {
-                println!("allintable: {}.*", table)
-            }
-            FieldDefinitionExpression::Value(ref val) => println!("value: {}", val),
-            FieldDefinitionExpression::Col(ref col) => println!("col: {}", col),
-            _ => unimplemented!(),
-        }
-    }
-
+pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>) -> TestNodeRef {
     // join all entries of tables and joins together; TODO make this use on/where
     let mut previous_base: Option<&TestNodeRef> = None;
     let mut previous_join: Option<TestNodeRef> = None;
+    for name in joinable_names {
+        match previous_base {
+            None => previous_base = tables.get(&name),
+            Some (base) => {
+                // prev is either referencing a base table, or a join thereof
+                let base_to_add = tables.get(&name).unwrap();
+                match previous_join {
+                    None => previous_join = Some(make_join(base, base_to_add)),
+                    Some (prev) => previous_join = Some(make_join(&prev, base_to_add)),
+                }
+                previous_base = Some(base_to_add);
+            },
+        }
+    }
+    let join_result = match previous_join {
+        Some(j) => j,
+        None => match previous_base {
+            Some(j) => j.clone(),
+            None => unimplemented!(),
+        },
+    };
+    join_result
+}
+
+pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+    // joins
     let mut joinable_names: Vec<String> = s.tables.iter()
                                            .map(|t| t.name.clone())
                                            .collect();
@@ -247,35 +255,36 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
                                            })
                                            .collect();
     joinable_names.append(&mut more_joinables);
-    for name in joinable_names {
-        match previous_base {
-            None => {
-                println!("JOIN STEP 0");
-                previous_base = tables.get(&name);
+    let join_result = make_all_joins(joinable_names, tables);
+
+    // projection
+    let mut columns_to_project = Vec::new();
+    for field in s.fields.iter() {
+        match field {
+            FieldDefinitionExpression::All => {
+                let mut columns = join_result.borrow().columns.clone();
+                columns_to_project.append(&mut columns);
             }
-            Some (base) => {
-                // prev is either referencing a base table, or a join thereof
-                println!("JOIN STEP 1/2: {}", name);
-                let base_to_add = tables.get(&name).unwrap();
-                match previous_join {
-                    None => {
-                        println!("JOIN STEP 1: making join: {} JOIN {}", base.borrow().name, base_to_add.borrow().name);
-                        previous_join = Some(make_join(base, base_to_add));
-                        println!("join: {:?}", previous_join);
-                    }
-                    Some (prev) => {
-                        println!("JOIN STEP 2: making join: {} JOIN {}", prev.borrow().name, base_to_add.borrow().name);
-                        previous_join = Some(make_join(&prev, base_to_add));
-                        println!("join: {:?}", previous_join);
-                    }
-                }
-                previous_base = Some(base_to_add);
+            FieldDefinitionExpression::AllInTable(ref table) => {
+                let mut columns = tables.get(table).unwrap().borrow().columns.clone();
+                columns_to_project.append(&mut columns);
             }
+            FieldDefinitionExpression::Value(ref val) => println!("value: {}", val), // TODO
+            FieldDefinitionExpression::Col(ref col) => {
+                let column = Column{ name: col.name.clone() };  // TODO this might include expressions
+                columns_to_project.push(column);
+            }
+            _ => unimplemented!(),
         }
     }
-
-
-    get_empty_node()  // TODO return something legit
+    let projection = TestNode::new(
+        "project",
+        TestNodeData::Project,
+        columns_to_project,
+        vec![join_result], // ancestors
+        Vec::new(), // children
+    );
+    projection
 }
 
 pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> (String, TestNodeRef) {
@@ -293,6 +302,7 @@ pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>,
                 vec![select_node],
                 Vec::new(),
             );
+            println!("view: {:?}", view);
             (s.name.clone(), view)
         }
     }
