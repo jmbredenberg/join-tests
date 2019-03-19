@@ -7,14 +7,16 @@ use nom_sql::{SelectStatement, SelectSpecification, CreateTableStatement, Create
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::fmt;
 
 
 
-
+#[derive(Clone, Debug)]
 pub struct Column {
     pub name: String,
 }
 
+#[derive(Clone)]
 pub struct TestNode {
     pub name: String,
     pub data: TestNodeData,
@@ -24,6 +26,22 @@ pub struct TestNode {
 }
 pub type TestNodeRef = Rc<RefCell<TestNode>>;
 
+impl fmt::Debug for TestNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let column_strings: Vec<String> = self.columns.iter().map(|a| a.clone().name).collect();
+        let ancestor_strings: Vec<String> = self.ancestors.iter().map(|a| a.borrow().clone().name).collect();
+        let children_strings: Vec<String> = self.children.iter().map(|a| a.borrow().clone().name).collect();
+        write!(f, "TestNode {{ name: {}, data: {:?}, columns: {:?}, ancestors: {:?}, children: {:?} }}",
+                self.name,
+                self.data,
+                column_strings,
+                ancestor_strings,
+                children_strings
+              )
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum TestNodeData {
     /// over column, group_by columns
     /*Aggregation {
@@ -50,26 +68,9 @@ pub enum TestNodeData {
         on: Column,
         separator: String,
     },*/
-    /// no extra info required
-    /*Identity,*/
-    /// left node, right node, on left columns, on right columns, emit columns
-    InnerJoin {
-        on_left: Vec<Column>,
-        on_right: Vec<Column>,
-        project: Vec<Column>,
-    },
-    /// on left column, on right column, emit columns
-    LeftJoin {
-        on_left: Vec<Column>,
-        on_right: Vec<Column>,
-        project: Vec<Column>,
-    },
-    /// on left column, on right column, emit columns
-    OuterJoin {
-        on_left: Vec<Column>,
-        on_right: Vec<Column>,
-        project: Vec<Column>,
-    },
+    InnerJoin,
+    LeftJoin,
+    OuterJoin,
     /// emit columns
     /*Project {
         emit: Vec<Column>,
@@ -206,15 +207,13 @@ pub fn make_table(s: &CreateTableStatement) -> (String, TestNodeRef) {
 }
 
 pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef) -> TestNodeRef {
+    let mut columns = n1.borrow().columns.clone();
+    columns.append(&mut n2.borrow().columns.clone());
     TestNode::new(
         "join",
-        TestNodeData::InnerJoin {
-            on_left: Vec::new(),  // TODO
-            on_right: Vec::new(),  // TODO
-            project: Vec::new(),  // TODO
-        },
-        Vec::new(),  // TODO columns
-        Vec::new(), // TODO ancestors
+        TestNodeData::InnerJoin,
+        columns,
+        vec![n1.clone(), n2.clone()], // ancestors
         Vec::new(), // children
     )
 }
@@ -262,18 +261,17 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
                     None => {
                         println!("JOIN STEP 1: making join: {} JOIN {}", base.borrow().name, base_to_add.borrow().name);
                         previous_join = Some(make_join(base, base_to_add));
+                        println!("join: {:?}", previous_join);
                     }
                     Some (prev) => {
                         println!("JOIN STEP 2: making join: {} JOIN {}", prev.borrow().name, base_to_add.borrow().name);
                         previous_join = Some(make_join(&prev, base_to_add));
+                        println!("join: {:?}", previous_join);
                     }
                 }
                 previous_base = Some(base_to_add);
             }
         }
-    }
-    for join in s.join.iter() {
-        println!("join with op={}, right={}, constraint={}", join.operator, join.right, join.constraint);
     }
 
 
