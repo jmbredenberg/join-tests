@@ -41,6 +41,15 @@ impl fmt::Debug for TestNode {
     }
 }
 
+impl fmt::Display for TestNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{:?}", name, data);
+        for a in self.ancestors.iter() {
+            write!(f, "-- {}", a);
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum TestNodeData {
     /// over column, group_by columns
@@ -302,7 +311,7 @@ pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>,
                 vec![select_node],
                 Vec::new(),
             );
-            println!("view: {:?}", view);
+            println!("view: {}", view);
             (s.name.clone(), view)
         }
     }
