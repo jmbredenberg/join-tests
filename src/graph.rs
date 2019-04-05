@@ -31,23 +31,30 @@ impl fmt::Debug for TestNode {
         let column_strings: Vec<String> = self.columns.iter().map(|a| a.clone().name).collect();
         let ancestor_strings: Vec<String> = self.ancestors.iter().map(|a| a.borrow().clone().name).collect();
         let children_strings: Vec<String> = self.children.iter().map(|a| a.borrow().clone().name).collect();
-        write!(f, "TestNode {{ name: {}, data: {:?}, columns: {:?}, ancestors: {:?}, children: {:?} }}",
+        /*write!(f, "TestNode {{ name: {}, data: {:?}, columns: {:?}, ancestors: {:?}, children: {:?} }}",
                 self.name,
                 self.data,
                 column_strings,
                 ancestor_strings,
                 children_strings
-              )
+            )*/
+        write!(f, "{}: {:?}", self.name, self.data)
     }
 }
 
 impl fmt::Display for TestNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{:?}", name, data);
-        for a in self.ancestors.iter() {
-            write!(f, "-- {}", a);
-        }
+        indented_print(self, 0, f)
     }
+}
+
+pub fn indented_print(node: &TestNode, indent:usize, f: &mut fmt::Formatter) -> fmt::Result {
+    let spaces = (0..indent*3).map(|_| " ").collect::<String>();
+    write!(f, "{}-- {}:{:?}\n", spaces, node.name, node.data);
+    for a in node.ancestors.iter() {
+        indented_print(&a.borrow(), indent+1, f);
+    }
+    write!(f,"")
 }
 
 #[derive(Clone, Debug)]
@@ -161,13 +168,11 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
                 parsed_ok.push(query);
                 match q {
                     SqlQuery::Select(ref select) => {
-                        let node = make_select(select, &tables, &mut graph);
-                        graph.push(node);
+                        make_select(select, &tables, &mut graph);
                     },
                     SqlQuery::Insert(ref _insert) => (),
                     SqlQuery::CreateTable(ref create) => {
-                        let (t, base) = make_table(create);
-                        tables.insert(t, base);
+                        make_table(create, &mut tables, &mut graph);
                     },
                     SqlQuery::CreateView(ref create) => {
                         let (t, view) = make_view(create, &tables, &mut graph);
@@ -186,11 +191,20 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
             }
         }
     }
+    let njoins = graph.iter()
+                      .filter(|node| match node.borrow().data {
+                          TestNodeData::InnerJoin => true,
+                          TestNodeData::OuterJoin => true,
+                          TestNodeData::LeftJoin => true,
+                          _ => false,
+                      })
+                      .count();
+    println!("NUM_NODES: {}\nNUM_JOINS: {}", graph.len(), njoins);
 
     (parsed_ok.len() as i32, parsed_err)
 }
 
-pub fn make_table(s: &CreateTableStatement) -> (String, TestNodeRef) {
+pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> () {
     let t: String = s.table.name.clone();
     let fields = s.fields.clone()
                   .into_iter()
@@ -207,22 +221,25 @@ pub fn make_table(s: &CreateTableStatement) -> (String, TestNodeRef) {
         Vec::new(),
         Vec::new(),
     );
-    (t, base)
+    graph.push(base.clone());
+    tables.insert(t, base);
 }
 
-pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef) -> TestNodeRef {
+pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
     let mut columns = n1.borrow().columns.clone();
     columns.append(&mut n2.borrow().columns.clone());
-    TestNode::new(
+    let node = TestNode::new(
         "join",
         TestNodeData::InnerJoin,
         columns,
         vec![n1.clone(), n2.clone()], // ancestors
         Vec::new(), // children
-    )
+    );
+    graph.push(node.clone());
+    node
 }
 
-pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>) -> TestNodeRef {
+pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
     // join all entries of tables and joins together; TODO make this use on/where
     let mut previous_base: Option<&TestNodeRef> = None;
     let mut previous_join: Option<TestNodeRef> = None;
@@ -233,8 +250,8 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
                 // prev is either referencing a base table, or a join thereof
                 let base_to_add = tables.get(&name).unwrap();
                 match previous_join {
-                    None => previous_join = Some(make_join(base, base_to_add)),
-                    Some (prev) => previous_join = Some(make_join(&prev, base_to_add)),
+                    None => previous_join = Some(make_join(base, base_to_add, graph)),
+                    Some (prev) => previous_join = Some(make_join(&prev, base_to_add, graph)),
                 }
                 previous_base = Some(base_to_add);
             },
@@ -251,6 +268,7 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
 }
 
 pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+    println!("making select for: {}", s);
     // joins
     let mut joinable_names: Vec<String> = s.tables.iter()
                                            .map(|t| t.name.clone())
@@ -264,7 +282,7 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
                                            })
                                            .collect();
     joinable_names.append(&mut more_joinables);
-    let join_result = make_all_joins(joinable_names, tables);
+    let join_result = make_all_joins(joinable_names, tables, graph);
 
     // projection
     let mut columns_to_project = Vec::new();
@@ -293,11 +311,13 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
         vec![join_result], // ancestors
         Vec::new(), // children
     );
+    graph.push(projection.clone());
+    println!("projection:\n{}", projection.borrow());
+    println!("graph: {:?}", graph);
     projection
 }
 
 pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> (String, TestNodeRef) {
-    println!("making view for: {}", s);
     match *(s.clone().definition) {
         SelectSpecification::Compound(_) => unimplemented!(),
         SelectSpecification::Simple(ss) => {
@@ -311,7 +331,8 @@ pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>,
                 vec![select_node],
                 Vec::new(),
             );
-            println!("view: {}", view);
+            //println!("view:\n{}", view.borrow());
+            graph.push(view.clone());
             (s.name.clone(), view)
         }
     }

@@ -65,3 +65,8 @@ fn tpcw_test_queries() {
 fn test_lobsters_schema() {
     assert!(test_queries_from_file(Path::new("tests/lobsters-schema.txt"), "TPC-W").is_ok());
 }
+
+#[test]
+fn test_long_join() {
+    assert!(test_queries_from_file(Path::new("tests/long-join.txt"), "TPC-W").is_ok());
+}
