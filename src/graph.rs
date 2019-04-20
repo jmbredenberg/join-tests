@@ -3,6 +3,7 @@ extern crate nom_sql;
 use nom_sql::SqlQuery;
 use nom_sql::{SelectStatement, SelectSpecification, CreateTableStatement, CreateViewStatement,
     FieldDefinitionExpression, JoinRightSide};
+use graphviz::graphviz;
 
 use std::collections::HashMap;
 use std::cell::RefCell;
@@ -19,6 +20,7 @@ pub struct Column {
 #[derive(Clone)]
 pub struct TestNode {
     pub name: String,
+    pub index: usize,
     pub data: TestNodeData,
     pub columns: Vec<Column>,
     pub ancestors: Vec<TestNodeRef>,
@@ -56,6 +58,34 @@ pub fn indented_print(node: &TestNode, indent:usize, f: &mut fmt::Formatter) -> 
     }
     write!(f,"")
 }
+
+impl TestNode {
+    pub fn describe(&self) -> String {
+        let mut s = String::new();
+        let border = "filled";
+
+        s.push_str(&format!(
+            "[label=\"{}\"]\n",
+            self.index
+        ));
+
+        s.push_str(&format!(
+            "n{}_m [shape=tab, style=\"bold,filled\", color=\"#AA4444\", {}, label=\"\"]\n\
+             n{} -> n{}_m {{ dir=none }}\n\
+             {{rank=same; n{} n{}_m}}\n",
+            self.index,
+            "fillcolor=\"#AA4444\"",
+            self.index,
+            self.index,
+            self.index,
+            self.index
+        ));
+        s
+    }
+}
+
+
+
 
 #[derive(Clone, Debug)]
 pub enum TestNodeData {
@@ -116,6 +146,7 @@ pub enum TestNodeData {
 impl TestNode {
     pub fn new(
         name: &str,
+        index: usize,
         data: TestNodeData,
         columns: Vec<Column>,
         ancestors: Vec<TestNodeRef>,
@@ -123,6 +154,7 @@ impl TestNode {
     ) -> TestNodeRef {
         let mn = TestNode {
             name: String::from(name),
+            index: index,
             data: data,
             columns: columns,
             ancestors: ancestors.clone(),
@@ -143,16 +175,18 @@ impl TestNode {
         self.children.push(c)
     }
 }
-
+/*
 pub fn get_empty_node() -> TestNodeRef {
     TestNode::new(
         "unimplemented",
+        0,
         TestNodeData::UnimplementedNode,
         Vec::new(),
         Vec::new(),
         Vec::new(),
     )
 }
+*/
 
 pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
     let mut parsed_ok = Vec::new();
@@ -200,6 +234,7 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
                       })
                       .count();
     println!("NUM_NODES: {}\nNUM_JOINS: {}", graph.len(), njoins);
+    println!("GRAPHVIZ:\n{}", graphviz(&graph));
 
     (parsed_ok.len() as i32, parsed_err)
 }
@@ -214,6 +249,7 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNod
                   .collect();
     let base = TestNode::new(
         &t.clone(),
+        graph.len(),
         TestNodeData::Base {
             keys: Vec::new(),  // TODO get this from s.keys, looks like a pain
         },
@@ -230,6 +266,7 @@ pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef
     columns.append(&mut n2.borrow().columns.clone());
     let node = TestNode::new(
         "join",
+        graph.len(),
         TestNodeData::InnerJoin,
         columns,
         vec![n1.clone(), n2.clone()], // ancestors
@@ -306,6 +343,7 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
     }
     let projection = TestNode::new(
         "project",
+        graph.len(),
         TestNodeData::Project,
         columns_to_project,
         vec![join_result], // ancestors
@@ -324,6 +362,7 @@ pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>,
             let select_node = make_select(&ss, tables, graph);
             let view = TestNode::new(
                 &s.name.clone(),
+                graph.len(),
                 TestNodeData::Leaf {
                     keys: Vec::new(),  // TODO what should this be? also columns
                 },

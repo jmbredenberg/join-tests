@@ -1,6 +1,6 @@
 extern crate nom_sql;
 
-use nom_sql::SqlQuery;
+
 use self::graph::parse_queries;
 
 use std::fs::File;
@@ -8,6 +8,7 @@ use std::io::Read;
 use std::path::Path;
 
 mod graph;
+mod graphviz;
 
 
 fn test_queries_from_file(f: &Path, name: &str) -> Result<i32, i32> {
@@ -69,4 +70,9 @@ fn test_lobsters_schema() {
 #[test]
 fn test_long_join() {
     assert!(test_queries_from_file(Path::new("tests/long-join.txt"), "TPC-W").is_ok());
+}
+
+#[test]
+fn test_combo_join() {
+    assert!(test_queries_from_file(Path::new("tests/combo-join.txt"), "TPC-W").is_ok());
 }
