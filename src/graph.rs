@@ -66,20 +66,9 @@ impl TestNode {
 
         s.push_str(&format!(
             "[label=\"{}\"]\n",
-            self.index
+            self.name
         ));
-
-        s.push_str(&format!(
-            "n{}_m [shape=tab, style=\"bold,filled\", color=\"#AA4444\", {}, label=\"\"]\n\
-             n{} -> n{}_m {{ dir=none }}\n\
-             {{rank=same; n{} n{}_m}}\n",
-            self.index,
-            "fillcolor=\"#AA4444\"",
-            self.index,
-            self.index,
-            self.index,
-            self.index
-        ));
+        
         s
     }
 }
