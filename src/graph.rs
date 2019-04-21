@@ -67,16 +67,22 @@ impl TestNode {
         s.push_str(&format!(
             "[label=\"{}\"]\n",
             self.name
-        ));
-        
+        )); // "⋈", "⋉", "π", "⋃" etc. from noria-server/dataflow/src/ops/<type>::description
+
         s
+    }
+}
+
+impl PartialEq for TestNode {
+    fn eq(&self, other: &TestNode) -> bool {
+        self.index == other.index
     }
 }
 
 
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TestNodeData {
     /// over column, group_by columns
     /*Aggregation {
@@ -85,9 +91,7 @@ pub enum TestNodeData {
         kind: AggregationKind,
     },*/
     /// column specifications, keys (non-compound)
-    Base {
-        keys: Vec<Column>,
-    },
+    Base,
     /// over column, group_by columns
     /*Extremum {
         on: Column,
@@ -126,9 +130,7 @@ pub enum TestNodeData {
     /// reuse another node
     Reuse,
     /// leaf (reader) node, keys
-    Leaf {
-        keys: Vec<Column>,
-    },
+    Leaf,
     UnimplementedNode,
 }
 
@@ -239,9 +241,7 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNod
     let base = TestNode::new(
         &t.clone(),
         graph.len(),
-        TestNodeData::Base {
-            keys: Vec::new(),  // TODO get this from s.keys, looks like a pain
-        },
+        TestNodeData::Base,
         fields,
         Vec::new(),
         Vec::new(),
@@ -265,6 +265,21 @@ pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef
     node
 }
 
+pub fn overlap_existing(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> Option<TestNodeRef> {
+    for node in graph {
+        if node.borrow().data == TestNodeData::InnerJoin {
+            let ancestors = node.borrow().ancestors.clone();
+            if ancestors.len() != 2 {
+                unimplemented!();
+            }
+            if ancestors.contains(n1) && ancestors.contains(n2) {
+                return Some(node.clone());
+            }
+        }
+    }
+    return None
+}
+
 pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
     // join all entries of tables and joins together; TODO make this use on/where
     let mut previous_base: Option<&TestNodeRef> = None;
@@ -275,9 +290,13 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
             Some (base) => {
                 // prev is either referencing a base table, or a join thereof
                 let base_to_add = tables.get(&name).unwrap();
-                match previous_join {
-                    None => previous_join = Some(make_join(base, base_to_add, graph)),
-                    Some (prev) => previous_join = Some(make_join(&prev, base_to_add, graph)),
+                // check whether we already have a join node in the graph between these nodes
+                match overlap_existing(base, base_to_add, graph) {
+                    Some (prev) => previous_join = Some(prev),
+                    None => match previous_join {
+                        None => previous_join = Some(make_join(base, base_to_add, graph)),
+                        Some (prev) => previous_join = Some(make_join(&prev, base_to_add, graph)),
+                    }
                 }
                 previous_base = Some(base_to_add);
             },
@@ -339,8 +358,6 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
         Vec::new(), // children
     );
     graph.push(projection.clone());
-    println!("projection:\n{}", projection.borrow());
-    println!("graph: {:?}", graph);
     projection
 }
 
@@ -352,9 +369,7 @@ pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>,
             let view = TestNode::new(
                 &s.name.clone(),
                 graph.len(),
-                TestNodeData::Leaf {
-                    keys: Vec::new(),  // TODO what should this be? also columns
-                },
+                TestNodeData::Leaf,
                 Vec::new(),
                 vec![select_node],
                 Vec::new(),
