@@ -11,6 +11,8 @@ use std::rc::Rc;
 use std::fmt;
 
 
+static JOIN_ALL : bool = true;
+
 
 #[derive(Clone, Debug)]
 pub struct Column {
@@ -166,7 +168,7 @@ impl TestNode {
         self.children.push(c)
     }
 }
-/*
+
 pub fn get_empty_node() -> TestNodeRef {
     TestNode::new(
         "unimplemented",
@@ -177,7 +179,7 @@ pub fn get_empty_node() -> TestNodeRef {
         Vec::new(),
     )
 }
-*/
+
 
 pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
     let mut parsed_ok = Vec::new();
@@ -312,6 +314,65 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
     join_result
 }
 
+pub fn make_combined_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+    // join all entries of tables and joins together; TODO make this use on/where
+    let empty_node = get_empty_node();
+    let mut previous_base: Option<&TestNodeRef> = Some(&empty_node);
+    let mut previous_join: Option<TestNodeRef> = None;
+
+    let mut already_joined_names: Vec<String> = Vec::new();
+    for node in graph.clone() {
+        if node.borrow().data == TestNodeData::InnerJoin {
+            let ancestors = node.borrow().ancestors.clone();
+            if ancestors.len() != 2 {
+                unimplemented!();
+            }
+            if ancestors[0].borrow().data == TestNodeData::Base {
+                already_joined_names.push(ancestors[0].borrow().name.clone());
+            }
+            if ancestors[1].borrow().data == TestNodeData::Base {
+                already_joined_names.push(ancestors[1].borrow().name.clone());
+            }
+            previous_join = Some(node.clone());
+        }
+    }
+
+    if previous_join == None {
+        previous_base = None;
+    }
+
+    let mut names: Vec<String> = Vec::new();
+    for name in joinable_names {
+        if !already_joined_names.contains(&name) && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+
+    for name in names {
+        match previous_base {
+            None => previous_base = tables.get(&name),
+            Some (base) => {
+                // prev is either referencing a base table, or a join thereof
+                let base_to_add = tables.get(&name).unwrap();
+                // check whether we already have a join node in the graph between these nodes
+                match previous_join {
+                    None => previous_join = Some(make_join(base, base_to_add, graph)),
+                    Some (prev) => previous_join = Some(make_join(&prev, base_to_add, graph)),
+                }
+                previous_base = Some(base_to_add);
+            },
+        }
+    }
+    let join_result = match previous_join {
+        Some(j) => j,
+        None => match previous_base {
+            Some(j) => j.clone(),
+            None => unimplemented!(),
+        },
+    };
+    join_result
+}
+
 pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
     println!("making select for: {}", s);
     // joins
@@ -327,7 +388,11 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
                                            })
                                            .collect();
     joinable_names.append(&mut more_joinables);
-    let join_result = make_all_joins(joinable_names, tables, graph);
+    let join_result = if JOIN_ALL {
+        make_combined_joins(joinable_names, tables, graph)
+    } else {
+        make_all_joins(joinable_names, tables, graph)
+    };
 
     // projection
     let mut columns_to_project = Vec::new();
