@@ -11,7 +11,7 @@ use std::rc::Rc;
 use std::fmt;
 
 
-static JOIN_ALL : bool = true;
+static JOIN_ALL : bool = false;
 
 
 #[derive(Clone, Debug)]
@@ -293,13 +293,21 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
                 // prev is either referencing a base table, or a join thereof
                 let base_to_add = tables.get(&name).unwrap();
                 // check whether we already have a join node in the graph between these nodes
-                match overlap_existing(base, base_to_add, graph) {
-                    Some (prev) => previous_join = Some(prev),
-                    None => match previous_join {
-                        None => previous_join = Some(make_join(base, base_to_add, graph)),
-                        Some (prev) => previous_join = Some(make_join(&prev, base_to_add, graph)),
+                match previous_join {
+                    None => {
+                        match overlap_existing(base, base_to_add, graph) {
+                            Some (overlap) => previous_join = Some(overlap),
+                            None => previous_join = Some(make_join(base, base_to_add, graph)),
+                        }
+                    }
+                    Some (prev) => {
+                        match overlap_existing(&prev, base_to_add, graph) {
+                            Some (overlap) => previous_join = Some(overlap),
+                            None => previous_join = Some(make_join(&prev, base_to_add, graph)),
+                        }
                     }
                 }
+
                 previous_base = Some(base_to_add);
             },
         }

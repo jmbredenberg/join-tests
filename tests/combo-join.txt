@@ -10,7 +10,8 @@ CREATE TABLE shopping_cart ( sc_id int not null, sc_time timestamp, PRIMARY KEY(
 CREATE TABLE shopping_cart_line ( scl_sc_id int not null, scl_qty int, scl_i_id int not null, PRIMARY KEY(scl_sc_id, scl_i_id))
 
 
-#COMMENTED
+
+
 
 # getMostRecentOrder.id : customer, orders
 SELECT o_id FROM customer, orders WHERE customer.c_id = orders.o_c_id AND c_uname = ? ORDER BY o_date, orders.o_id DESC limit 1;
@@ -24,10 +25,11 @@ SELECT * FROM shopping_cart_line, item WHERE scl_i_id = item.i_id AND scl_sc_id 
 # getMostRecentOrder.lines : order_line, item
 SELECT * FROM order_line, item WHERE ol_o_id = ? AND ol_i_id = i_id;
 
-# adminUpdate.related : order, order_line
+# adminUpdate.related : orders, order_line
 SELECT ol_i_id FROM orders, order_line WHERE orders.o_id = order_line.ol_o_id AND NOT (order_line.ol_i_id = ?) AND orders.o_c_id IN (SELECT o_c_id FROM orders, order_line WHERE orders.o_id = order_line.ol_o_id AND orders.o_id > (SELECT MAX(o_id)-10000 FROM orders) AND order_line.ol_i_id = ?) GROUP BY ol_i_id ORDER BY SUM(ol_qty) DESC limit 5;
 
-
+# new nonsensical query: author, orders, order_line
+SELECT * FROM author, orders, order_line WHERE orders.o_id = order_line.ol_o_id AND orders.o_id = author.a_id AND order_line.ol_i_id = ?;
 
 
 # getBook : item, author
