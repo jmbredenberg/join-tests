@@ -12,6 +12,7 @@ description = "Rough code to test outer join effects on efficiency."
 license = "MIT"
 
 [dependencies]
+permutohedron = "0.2.4"
 serde = "1.0"
 serde_derive = "1.0"
 nom = "^3.2.1"

@@ -1,9 +1,12 @@
 extern crate nom_sql;
+extern crate permutohedron;
 
 use nom_sql::SqlQuery;
 use nom_sql::{SelectStatement, SelectSpecification, CreateTableStatement, CreateViewStatement,
     FieldDefinitionExpression, JoinRightSide};
 use graphviz::graphviz;
+
+use self::permutohedron::Heap;
 
 use std::collections::HashMap;
 use std::cell::RefCell;
@@ -12,6 +15,7 @@ use std::fmt;
 
 
 static JOIN_ALL : bool = false;
+static TRY_PERMUTATIONS : bool = true;
 
 
 #[derive(Clone, Debug)]
@@ -32,10 +36,10 @@ pub type TestNodeRef = Rc<RefCell<TestNode>>;
 
 impl fmt::Debug for TestNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let column_strings: Vec<String> = self.columns.iter().map(|a| a.clone().name).collect();
+        /*let column_strings: Vec<String> = self.columns.iter().map(|a| a.clone().name).collect();
         let ancestor_strings: Vec<String> = self.ancestors.iter().map(|a| a.borrow().clone().name).collect();
         let children_strings: Vec<String> = self.children.iter().map(|a| a.borrow().clone().name).collect();
-        /*write!(f, "TestNode {{ name: {}, data: {:?}, columns: {:?}, ancestors: {:?}, children: {:?} }}",
+        write!(f, "TestNode {{ name: {}, data: {:?}, columns: {:?}, ancestors: {:?}, children: {:?} }}",
                 self.name,
                 self.data,
                 column_strings,
@@ -64,7 +68,6 @@ pub fn indented_print(node: &TestNode, indent:usize, f: &mut fmt::Formatter) -> 
 impl TestNode {
     pub fn describe(&self) -> String {
         let mut s = String::new();
-        let border = "filled";
 
         s.push_str(&format!(
             "[label=\"{}\"]\n",
@@ -322,6 +325,38 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
     join_result
 }
 
+pub fn make_joins_with_permutations(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+    let mut names = joinable_names.clone();
+    let heap = Heap::new(&mut names);
+
+    let mut best_order = joinable_names.clone();
+    let mut best_overlap = 0;
+
+    for name_order in heap {
+        let mut overlap = 0;
+
+        let mut name = name_order[0].clone();
+        let mut prev_node = tables.get(&name).unwrap().clone();
+        let mut next_node = prev_node.clone();
+        for i in 1..name_order.len() {
+            name = name_order[i].clone();
+            next_node = tables.get(&name).unwrap().clone();
+            match overlap_existing(&prev_node, &next_node, graph) {
+                Some (overlap_node) => prev_node = overlap_node,
+                None => break,
+            }
+            overlap += 1;
+        }
+
+        if overlap > best_overlap {
+            best_overlap = overlap;
+            best_order = name_order.clone();
+        }
+    }
+
+    make_all_joins(best_order, tables, graph)
+}
+
 pub fn make_combined_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
     // join all entries of tables and joins together; TODO make this use on/where
     let empty_node = get_empty_node();
@@ -398,6 +433,8 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
     joinable_names.append(&mut more_joinables);
     let join_result = if JOIN_ALL {
         make_combined_joins(joinable_names, tables, graph)
+    } else if TRY_PERMUTATIONS{
+        make_joins_with_permutations(joinable_names, tables, graph)
     } else {
         make_all_joins(joinable_names, tables, graph)
     };
