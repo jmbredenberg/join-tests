@@ -9,6 +9,7 @@ use std::path::Path;
 
 mod graph;
 mod graphviz;
+mod join;
 
 
 fn test_queries_from_file(f: &Path, name: &str) -> Result<i32, i32> {
