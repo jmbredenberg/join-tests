@@ -12,7 +12,7 @@ mod graphviz;
 mod join;
 
 
-fn test_queries_from_file(f: &Path, name: &str) -> Result<i32, i32> {
+pub fn test_queries_from_file(f: &Path, name: &str) -> Result<i32, i32> {
     let mut f = File::open(f).unwrap();
     let mut s = String::new();
 
