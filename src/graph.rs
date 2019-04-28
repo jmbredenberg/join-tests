@@ -5,6 +5,7 @@ use nom_sql::{SelectStatement, SelectSpecification, CreateTableStatement, Create
     FieldDefinitionExpression, JoinRightSide};
 use graphviz::graphviz;
 use join;
+use Optimizations;
 
 use std::collections::HashMap;
 use std::cell::RefCell;
@@ -12,8 +13,7 @@ use std::rc::Rc;
 use std::fmt;
 
 
-static JOIN_ALL : bool = false;
-static TRY_PERMUTATIONS : bool = true;
+
 
 
 #[derive(Clone, Debug)]
@@ -182,7 +182,7 @@ pub fn get_empty_node() -> TestNodeRef {
 }
 
 
-pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
+pub fn parse_queries(queries: Vec<String>, opts: Optimizations) -> (i32, i32) {
     let mut parsed_ok = Vec::new();
     let mut parsed_err = 0;
 
@@ -196,14 +196,14 @@ pub fn parse_queries(queries: Vec<String>) -> (i32, i32) {
                 parsed_ok.push(query);
                 match q {
                     SqlQuery::Select(ref select) => {
-                        make_select(select, &tables, &mut graph);
+                        make_select(select, &tables, &mut graph, opts.clone());
                     },
                     SqlQuery::Insert(ref _insert) => (),
                     SqlQuery::CreateTable(ref create) => {
                         make_table(create, &mut tables, &mut graph);
                     },
                     SqlQuery::CreateView(ref create) => {
-                        let (t, view) = make_view(create, &tables, &mut graph);
+                        let (t, view) = make_view(create, &tables, &mut graph, opts.clone());
                         tables.insert(t, view);
                     },
                     SqlQuery::Delete(ref _delete) => (),
@@ -253,7 +253,7 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNod
     tables.insert(t, base);
 }
 
-pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>, opts: Optimizations) -> TestNodeRef {
     println!("making select for: {}", s);
     // joins
     let mut joinable_names: Vec<String> = s.tables.iter()
@@ -268,9 +268,9 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
                                            })
                                            .collect();
     joinable_names.append(&mut more_joinables);
-    let join_result = if JOIN_ALL {
+    let join_result = if opts.megajoin {
         join::make_combined_joins(joinable_names, tables, graph)
-    } else if TRY_PERMUTATIONS{
+    } else if opts.permutations {
         join::make_joins_with_permutations(joinable_names, tables, graph)
     } else {
         join::make_all_joins(joinable_names, tables, graph)
@@ -308,11 +308,11 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
     projection
 }
 
-pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> (String, TestNodeRef) {
+pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>, opts: Optimizations) -> (String, TestNodeRef) {
     match *(s.clone().definition) {
         SelectSpecification::Compound(_) => unimplemented!(),
         SelectSpecification::Simple(ss) => {
-            let select_node = make_select(&ss, tables, graph);
+            let select_node = make_select(&ss, tables, graph, opts);
             let view = TestNode::new(
                 &s.name.clone(),
                 graph.len(),
