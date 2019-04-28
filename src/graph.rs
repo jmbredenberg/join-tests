@@ -268,12 +268,19 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
                                            })
                                            .collect();
     joinable_names.append(&mut more_joinables);
+    if opts.sorted_names {
+        joinable_names.sort();
+    }
+    joinable_names.dedup();
+
     let join_result = if opts.megajoin {
-        join::make_combined_joins(joinable_names, tables, graph)
+        join::make_combined_joins(joinable_names, tables, graph, opts)
     } else if opts.permutations {
-        join::make_joins_with_permutations(joinable_names, tables, graph)
+        join::make_joins_with_permutations(joinable_names, tables, graph, opts)
+    } else if opts.nonprefix {
+        join::make_joins_nonprefix_overlap(joinable_names, tables, graph, opts)
     } else {
-        join::make_all_joins(joinable_names, tables, graph)
+        join::make_all_joins(joinable_names, tables, graph, opts)
     };
 
     // projection

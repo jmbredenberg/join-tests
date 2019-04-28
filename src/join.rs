@@ -1,6 +1,7 @@
 extern crate permutohedron;
 
 use graph::{TestNodeRef, TestNode, TestNodeData, get_empty_node};
+use Optimizations;
 
 use self::permutohedron::Heap;
 use std::collections::HashMap;
@@ -22,7 +23,11 @@ pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef
     node
 }
 
-pub fn overlap_existing(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> Option<TestNodeRef> {
+pub fn overlap_existing(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>, opts: Optimizations) -> Option<TestNodeRef> {
+    if !opts.overlap {
+        return None;
+    }
+    // check whether a join already exists of these nodes
     for node in graph {
         if node.borrow().data == TestNodeData::InnerJoin {
             let ancestors = node.borrow().ancestors.clone();
@@ -34,10 +39,11 @@ pub fn overlap_existing(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<Test
             }
         }
     }
-    return None
+    None
 }
 
-pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>,
+                      graph: &mut Vec<TestNodeRef>, opts: Optimizations) -> TestNodeRef {
     // join all entries of tables and joins together; TODO make this use on/where
     if joinable_names.len() == 0 {
         unimplemented!();
@@ -49,7 +55,7 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
     for i in 1..joinable_names.len() {
         name = joinable_names[i].clone();
         next_node = tables.get(&name).unwrap().clone();
-        match overlap_existing(&prev_node, &next_node, graph) {
+        match overlap_existing(&prev_node, &next_node, graph, opts.clone()) {
             Some (overlap_node) => prev_node = overlap_node,
             None => prev_node = make_join(&prev_node, &next_node, graph),
         }
@@ -58,7 +64,77 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
     prev_node
 }
 
-pub fn make_joins_with_permutations(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+pub fn get_all_ancestors(node: &TestNodeRef) -> Vec<String> {
+    if node.borrow().data == TestNodeData::Base {
+        return Vec::new();
+    }
+    let mut ancs: Vec<String> = node.borrow().ancestors.clone()
+                                             .into_iter()
+                                             .map(|anc| anc.borrow().name.clone())
+                                             .collect();
+    for anc in node.borrow().ancestors.clone() {
+        ancs.append(&mut get_all_ancestors(&anc));
+    }
+
+    ancs
+}
+
+pub fn all_acceptable(tables: &Vec<String>, joinable_names: &Vec<String>) -> bool {
+    for t in tables {
+        if !joinable_names.contains(&t) {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn some_needed(tables: &Vec<String>, joinable_names: &Vec<String>, covered_tables: &Vec<String>) -> bool {
+    let mut count = 0;
+    for t in tables {
+        if joinable_names.contains(&t) && !covered_tables.contains(&t) {
+            count += 1;
+        }
+    }
+    count >= 2
+}
+
+pub fn make_joins_nonprefix_overlap(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>,
+                                    graph: &mut Vec<TestNodeRef>, opts: Optimizations) -> TestNodeRef {
+    let mut covered_tables: Vec<String> = Vec::new();
+    let mut existing_joins: Vec<TestNodeRef> = Vec::new();
+    for node in graph.clone() {
+        if node.borrow().data == TestNodeData::InnerJoin {
+            let mut tables = get_all_ancestors(&node);
+            if all_acceptable(&tables, &joinable_names) && some_needed(&tables, &joinable_names, &covered_tables) {
+                existing_joins.push(node);
+                covered_tables.append(&mut tables);
+            }
+        }
+    }
+    if existing_joins.len() == 0 {
+        return make_all_joins(joinable_names, tables, graph, opts);
+    }
+    let mut prev_node = existing_joins[0].clone();
+    let mut next_node = prev_node.clone();
+    for i in 1..existing_joins.len() {
+        prev_node = make_join(&prev_node, &existing_joins[i], graph);
+    }
+    for name in joinable_names {
+        if covered_tables.contains(&name) {
+            continue;
+        }
+        next_node = tables.get(&name).unwrap().clone();
+        match overlap_existing(&prev_node, &next_node, graph, opts.clone()) {
+            Some (overlap_node) => prev_node = overlap_node,
+            None => prev_node = make_join(&prev_node, &next_node, graph),
+        }
+    }
+
+    prev_node
+}
+
+pub fn make_joins_with_permutations(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>,
+                                    graph: &mut Vec<TestNodeRef>, opts: Optimizations) -> TestNodeRef {
     let mut names = joinable_names.clone();
     let heap = Heap::new(&mut names);
 
@@ -74,7 +150,7 @@ pub fn make_joins_with_permutations(joinable_names: Vec<String>, tables: &HashMa
         for i in 1..name_order.len() {
             name = name_order[i].clone();
             next_node = tables.get(&name).unwrap().clone();
-            match overlap_existing(&prev_node, &next_node, graph) {
+            match overlap_existing(&prev_node, &next_node, graph, opts.clone()) {
                 Some (overlap_node) => prev_node = overlap_node,
                 None => break,
             }
@@ -87,10 +163,11 @@ pub fn make_joins_with_permutations(joinable_names: Vec<String>, tables: &HashMa
         }
     }
 
-    make_all_joins(best_order, tables, graph)
+    make_all_joins(best_order, tables, graph, opts)
 }
 
-pub fn make_combined_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+pub fn make_combined_joins(joinable_names: Vec<String>, tables: &HashMap<String, TestNodeRef>,
+                           graph: &mut Vec<TestNodeRef>, opts: Optimizations) -> TestNodeRef {
     // join all entries of tables and joins together; TODO make this use on/where
     let empty_node = get_empty_node();
     let mut previous_base: Option<&TestNodeRef> = Some(&empty_node);
