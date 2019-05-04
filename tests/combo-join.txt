@@ -25,11 +25,15 @@ SELECT * FROM shopping_cart_line, item WHERE scl_i_id = item.i_id AND scl_sc_id 
 # getMostRecentOrder.lines : order_line, item
 SELECT * FROM order_line, item WHERE ol_o_id = ? AND ol_i_id = i_id;
 
+# new nonsensical query 2: customer, orders, order_line, item
+SELECT * FROM customer, orders, order_line, item WHERE customer.c_id = orders.o_c_id AND order_line.ol_i_id = item.i_id AND orders.o_id = order_line.ol_o_id AND order_line.ol_o_id = ?;
+
 # adminUpdate.related : orders, order_line
 SELECT ol_i_id FROM orders, order_line WHERE orders.o_id = order_line.ol_o_id AND NOT (order_line.ol_i_id = ?) AND orders.o_c_id IN (SELECT o_c_id FROM orders, order_line WHERE orders.o_id = order_line.ol_o_id AND orders.o_id > (SELECT MAX(o_id)-10000 FROM orders) AND order_line.ol_i_id = ?) GROUP BY ol_i_id ORDER BY SUM(ol_qty) DESC limit 5;
 
 # new nonsensical query: author, orders, order_line
 SELECT * FROM author, orders, order_line WHERE orders.o_id = order_line.ol_o_id AND orders.o_id = author.a_id AND order_line.ol_i_id = ?;
+
 
 
 # getBook : item, author
