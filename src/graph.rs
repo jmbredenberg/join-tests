@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::fmt;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 
 
 
@@ -182,7 +185,7 @@ pub fn get_empty_node() -> TestNodeRef {
 }
 
 
-pub fn parse_queries(queries: Vec<String>, opts: Optimizations) -> (i32, i32) {
+pub fn parse_queries(queries: Vec<String>, opts: Optimizations, outf: Option<&Path>) -> (i32, i32) {
     let mut parsed_ok = Vec::new();
     let mut parsed_err = 0;
 
@@ -228,7 +231,17 @@ pub fn parse_queries(queries: Vec<String>, opts: Optimizations) -> (i32, i32) {
                       })
                       .count();
     println!("NUM_NODES: {}\nNUM_JOINS: {}", graph.len(), njoins);
-    println!("GRAPHVIZ:\n{}", graphviz(&graph));
+
+    match outf {
+        None => {
+            println!("GRAPHVIZ:\n{}", graphviz(&graph));
+        }
+        Some(f) => {
+            let mut f = File::create(f).unwrap();
+            f.write_all(format!("{}", graphviz(&graph)).as_bytes());
+        }
+    }
+
 
     (parsed_ok.len() as i32, parsed_err)
 }

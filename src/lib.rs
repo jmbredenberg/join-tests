@@ -33,7 +33,7 @@ impl Optimizations {  // default constructor
 }
 
 
-pub fn test_queries_from_file(f: &Path, name: &str, opts: Optimizations) -> Result<i32, i32> {
+pub fn test_queries_from_file(f: &Path, name: &str, opts: Optimizations, outf: Option<&Path>) -> Result<i32, i32> {
     let mut f = File::open(f).unwrap();
     let mut s = String::new();
 
@@ -67,7 +67,7 @@ pub fn test_queries_from_file(f: &Path, name: &str, opts: Optimizations) -> Resu
     println!("Loaded {} {} queries", lines.len(), name);
 
     // Try parsing them all
-    let (ok, err) = parse_queries(lines, opts);
+    let (ok, err) = parse_queries(lines, opts, outf);
 
     println!("Parsing failed: {} queries", err);
     println!("Parsed successfully: {} queries", ok);
@@ -81,20 +81,20 @@ pub fn test_queries_from_file(f: &Path, name: &str, opts: Optimizations) -> Resu
 
 #[test]
 fn tpcw_test_queries() {
-    assert!(test_queries_from_file(Path::new("tests/tpc-w-queries.txt"), "TPC-W", Optimizations::new()).is_ok());
+    assert!(test_queries_from_file(Path::new("tests/tpc-w-queries.txt"), "TPC-W", Optimizations::new(), None).is_ok());
 }
 
 #[test]
 fn test_lobsters_schema() {
-    assert!(test_queries_from_file(Path::new("tests/lobsters-schema.txt"), "TPC-W", Optimizations::new()).is_ok());
+    assert!(test_queries_from_file(Path::new("tests/lobsters-schema.txt"), "TPC-W", Optimizations::new(), None).is_ok());
 }
 
 #[test]
 fn test_long_join() {
-    assert!(test_queries_from_file(Path::new("tests/long-join.txt"), "TPC-W", Optimizations::new()).is_ok());
+    assert!(test_queries_from_file(Path::new("tests/long-join.txt"), "TPC-W", Optimizations::new(), None).is_ok());
 }
 
 #[test]
 fn test_combo_join() {
-    assert!(test_queries_from_file(Path::new("tests/combo-join.txt"), "TPC-W", Optimizations::new()).is_ok());
+    assert!(test_queries_from_file(Path::new("tests/combo-join.txt"), "TPC-W", Optimizations::new(), None).is_ok());
 }

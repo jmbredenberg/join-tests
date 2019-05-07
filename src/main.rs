@@ -5,6 +5,8 @@ use clap::{Arg, App};
 use join_tests::Optimizations;
 use join_tests::test_queries_from_file;
 use std::path::Path;
+use std::fs::File;
+use std::process::Command;
 
 
 
@@ -20,6 +22,11 @@ fn main() {
                                 .takes_value(true)
                                 .short("l")
                                 .long("label"))
+                        .arg(Arg::with_name("OUTPUT")
+                                .help("Output file for graphviz")
+                                .takes_value(true)
+                                .short("f")
+                                .long("output"))
                         .arg(Arg::with_name("OVERLAP")
                                 .help("Whether to attempt to reuse overlap with previous queries")
                                 .short("o")
@@ -44,6 +51,10 @@ fn main() {
 
     let file = Path::new(matches.value_of("INPUT").unwrap());
     let label = matches.value_of("LABEL").unwrap_or("undefined");
+    let out_name = matches.value_of("OUTPUT").unwrap_or("graph");
+    let graph_out_name = format!("{}.pdf", out_name);
+    let output_file = Path::new(out_name);
+    let graph_file = Path::new(&graph_out_name);
 
     let overlap = matches.is_present("OVERLAP");
     let permutations = matches.is_present("PERMUTATIONS");
@@ -52,5 +63,10 @@ fn main() {
     let megajoin = matches.is_present("MEGAJOIN");
     let opts = Optimizations{overlap, permutations, sorted_names, nonprefix, megajoin};
 
-    test_queries_from_file(file, label, opts).expect("Testing queries failed!");
+    test_queries_from_file(file, label, opts, Some(output_file)).expect("Testing queries failed!");
+    let output = Command::new("dot")
+                         .arg("-Tpdf")
+                         .stdin(File::open(output_file).unwrap())
+                         .stdout(File::create(graph_file).unwrap())
+                         .spawn();
 }
