@@ -8,13 +8,28 @@ use std::collections::HashMap;
 
 
 
-pub fn make_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+pub fn make_inner_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
     let mut columns = n1.borrow().columns.clone();
     columns.append(&mut n2.borrow().columns.clone());
     let node = TestNode::new(
         "join",
         graph.len(),
         TestNodeData::InnerJoin,
+        columns,
+        vec![n1.clone(), n2.clone()], // ancestors
+        Vec::new(), // children
+    );
+    graph.push(node.clone());
+    node
+}
+
+pub fn make_outer_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+    let mut columns = n1.borrow().columns.clone();
+    columns.append(&mut n2.borrow().columns.clone());
+    let node = TestNode::new(
+        "outer join",
+        graph.len(),
+        TestNodeData::OuterJoin,
         columns,
         vec![n1.clone(), n2.clone()], // ancestors
         Vec::new(), // children
@@ -57,7 +72,7 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
         next_node = tables.get(&name).unwrap().clone();
         match overlap_existing(&prev_node, &next_node, graph, opts.clone()) {
             Some (overlap_node) => prev_node = overlap_node,
-            None => prev_node = make_join(&prev_node, &next_node, graph),
+            None => prev_node = make_inner_join(&prev_node, &next_node, graph),
         }
     }
 
@@ -117,7 +132,7 @@ pub fn make_joins_nonprefix_overlap(joinable_names: Vec<String>, tables: &HashMa
     let mut prev_node = existing_joins[0].clone();
     let mut next_node = prev_node.clone();
     for i in 1..existing_joins.len() {
-        prev_node = make_join(&prev_node, &existing_joins[i], graph);
+        prev_node = make_inner_join(&prev_node, &existing_joins[i], graph);
     }
     for name in joinable_names {
         if covered_tables.contains(&name) {
@@ -126,7 +141,7 @@ pub fn make_joins_nonprefix_overlap(joinable_names: Vec<String>, tables: &HashMa
         next_node = tables.get(&name).unwrap().clone();
         match overlap_existing(&prev_node, &next_node, graph, opts.clone()) {
             Some (overlap_node) => prev_node = overlap_node,
-            None => prev_node = make_join(&prev_node, &next_node, graph),
+            None => prev_node = make_inner_join(&prev_node, &next_node, graph),
         }
     }
 
@@ -175,7 +190,7 @@ pub fn make_combined_joins(joinable_names: Vec<String>, tables: &HashMap<String,
 
     let mut already_joined_names: Vec<String> = Vec::new();
     for node in graph.clone() {
-        if node.borrow().data == TestNodeData::InnerJoin {
+        if node.borrow().data == TestNodeData::OuterJoin {
             let ancestors = node.borrow().ancestors.clone();
             if ancestors.len() != 2 {
                 unimplemented!();
@@ -209,8 +224,8 @@ pub fn make_combined_joins(joinable_names: Vec<String>, tables: &HashMap<String,
                 let base_to_add = tables.get(&name).unwrap();
                 // check whether we already have a join node in the graph between these nodes
                 match previous_join {
-                    None => previous_join = Some(make_join(base, base_to_add, graph)),
-                    Some (prev) => previous_join = Some(make_join(&prev, base_to_add, graph)),
+                    None => previous_join = Some(make_outer_join(base, base_to_add, graph)),
+                    Some (prev) => previous_join = Some(make_outer_join(&prev, base_to_add, graph)),
                 }
                 previous_base = Some(base_to_add);
             },

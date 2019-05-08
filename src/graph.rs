@@ -90,52 +90,10 @@ impl PartialEq for TestNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TestNodeData {
-    /// over column, group_by columns
-    /*Aggregation {
-        on: Column,
-        group_by: Vec<Column>,
-        kind: AggregationKind,
-    },*/
-    /// column specifications, keys (non-compound)
     Base,
-    /// over column, group_by columns
-    /*Extremum {
-        on: Column,
-        group_by: Vec<Column>,
-        kind: ExtremumKind,
-    },*/
-    /// filter conditions (one for each parent column)
-    /*Filter {
-        conditions: Vec<Option<FilterCondition>>,
-    },*/
-    /// over column, separator
-    /*GroupConcat {
-        on: Column,
-        separator: String,
-    },*/
     InnerJoin,
-    LeftJoin,
     OuterJoin,
-    /// emit columns
     Project,
-    /// emit columns
-    /*Union {
-        emit: Vec<Vec<Column>>,
-    },*/
-    /// order function, group columns, k
-    /*TopK {
-        order: Option<Vec<(Column, OrderType)>>,
-        group_by: Vec<Column>,
-        k: usize,
-        offset: usize,
-    },*/
-    // Get the distinct element sorted by a specific column
-    /*Distinct {
-        group_by: Vec<Column>,
-    },*/
-    /// reuse another node
-    Reuse,
-    /// leaf (reader) node, keys
     Leaf,
     UnimplementedNode,
 }
@@ -226,7 +184,6 @@ pub fn parse_queries(queries: Vec<String>, opts: Optimizations, outf: Option<&Pa
                       .filter(|node| match node.borrow().data {
                           TestNodeData::InnerJoin => true,
                           TestNodeData::OuterJoin => true,
-                          TestNodeData::LeftJoin => true,
                           _ => false,
                       })
                       .count();
