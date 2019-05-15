@@ -32,6 +32,7 @@ pub struct TestNode {
     pub columns: Vec<Column>,
     pub ancestors: Vec<TestNodeRef>,
     pub children: Vec<TestNodeRef>,
+    pub maxrows: usize,
 }
 pub type TestNodeRef = Rc<RefCell<TestNode>>;
 
@@ -47,7 +48,7 @@ impl fmt::Debug for TestNode {
                 ancestor_strings,
                 children_strings
             )*/
-        write!(f, "{}: {:?}", self.name, self.data)
+        write!(f, "{}: {:?}, {}", self.name, self.data, self.maxrows)
     }
 }
 
@@ -71,8 +72,9 @@ impl TestNode {
         let mut s = String::new();
 
         s.push_str(&format!(
-            "[label=\"{}\"]\n",
-            self.name
+            "[label=\"{} {}\"]\n",
+            self.name,
+            self.maxrows
         )); // "⋈", "⋉", "π", "⋃" etc. from noria-server/dataflow/src/ops/<type>::description
 
         s
@@ -106,6 +108,7 @@ impl TestNode {
         columns: Vec<Column>,
         ancestors: Vec<TestNodeRef>,
         children: Vec<TestNodeRef>,
+        maxrows: usize,
     ) -> TestNodeRef {
         let mn = TestNode {
             name: String::from(name),
@@ -114,6 +117,7 @@ impl TestNode {
             columns: columns,
             ancestors: ancestors.clone(),
             children: children.clone(),
+            maxrows: maxrows,
         };
 
         let rc_mn = Rc::new(RefCell::new(mn));
@@ -139,6 +143,7 @@ pub fn get_empty_node() -> TestNodeRef {
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        0,
     )
 }
 
@@ -204,6 +209,18 @@ pub fn parse_queries(queries: Vec<String>, opts: Optimizations, outf: Option<&Pa
 }
 
 pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> () {
+    let hardcode_rows: HashMap<&str, usize> =
+        [("customer", 100),
+         ("orders", 50),
+         ("order_line", 10),
+         ("item", 20),
+         ("author", 30),
+         ("shopping_cart_line", 12),
+         ("shopping_cart", 14),
+         ("cc_xacts", 80),
+         ("country", 6),
+         ("address", 64)]
+        .iter().cloned().collect();
     let t: String = s.table.name.clone();
     let fields = s.fields.clone()
                   .into_iter()
@@ -218,7 +235,9 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNod
         fields,
         Vec::new(),
         Vec::new(),
+        *hardcode_rows.get::<str>(&t.to_string()).unwrap(),  // TODO get a real number here
     );
+    println!("{}", &t.clone());
     graph.push(base.clone());
     tables.insert(t, base);
 }
@@ -273,6 +292,7 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
             _ => unimplemented!(),
         }
     }
+    let maxrows = (&join_result).borrow().maxrows.clone();
     let projection = TestNode::new(
         "project",
         graph.len(),
@@ -280,6 +300,7 @@ pub fn make_select(s: &SelectStatement, tables: &HashMap<String, TestNodeRef>, g
         columns_to_project,
         vec![join_result], // ancestors
         Vec::new(), // children
+        maxrows,
     );
     graph.push(projection.clone());
     projection
@@ -290,6 +311,7 @@ pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>,
         SelectSpecification::Compound(_) => unimplemented!(),
         SelectSpecification::Simple(ss) => {
             let select_node = make_select(&ss, tables, graph, opts);
+            let maxrows = (&select_node).borrow().maxrows.clone();
             let view = TestNode::new(
                 &s.name.clone(),
                 graph.len(),
@@ -297,6 +319,7 @@ pub fn make_view(s: &CreateViewStatement, tables: &HashMap<String, TestNodeRef>,
                 Vec::new(),
                 vec![select_node],
                 Vec::new(),
+                maxrows,
             );
             //println!("view:\n{}", view.borrow());
             graph.push(view.clone());

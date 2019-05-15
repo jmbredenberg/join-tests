@@ -5,10 +5,12 @@ use Optimizations;
 
 use self::permutohedron::Heap;
 use std::collections::HashMap;
+use std::cmp;
 
 
 
 pub fn make_inner_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+    let maxrows = cmp::min(n1.borrow().maxrows, n2.borrow().maxrows);  // assuming primary key for now
     let mut columns = n1.borrow().columns.clone();
     columns.append(&mut n2.borrow().columns.clone());
     let node = TestNode::new(
@@ -17,13 +19,15 @@ pub fn make_inner_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestN
         TestNodeData::InnerJoin,
         columns,
         vec![n1.clone(), n2.clone()], // ancestors
-        Vec::new(), // children
+        Vec::new(), // children,
+        maxrows,
     );
     graph.push(node.clone());
     node
 }
 
 pub fn make_outer_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
+    let maxrows = n1.borrow().maxrows + n2.borrow().maxrows; // assuming primary key for now
     let mut columns = n1.borrow().columns.clone();
     columns.append(&mut n2.borrow().columns.clone());
     let node = TestNode::new(
@@ -33,6 +37,7 @@ pub fn make_outer_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestN
         columns,
         vec![n1.clone(), n2.clone()], // ancestors
         Vec::new(), // children
+        maxrows,
     );
     graph.push(node.clone());
     node
