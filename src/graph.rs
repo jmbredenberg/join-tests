@@ -210,16 +210,14 @@ pub fn parse_queries(queries: Vec<String>, opts: Optimizations, outf: Option<&Pa
 
 pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNodeRef>, graph: &mut Vec<TestNodeRef>) -> () {
     let hardcode_rows: HashMap<&str, usize> =
-        [("customer", 100),
-         ("orders", 50),
-         ("order_line", 10),
-         ("item", 20),
-         ("author", 30),
-         ("shopping_cart_line", 12),
-         ("shopping_cart", 14),
-         ("cc_xacts", 80),
-         ("country", 6),
-         ("address", 64)]
+        [("customer", 2880000),
+         ("orders", 2592000),
+         ("order_line", 7775551),
+         ("item", 10000),
+         ("author", 625),
+         ("cc_xacts", 2592000),
+         ("country", 92),
+         ("address", 5760000)]
         .iter().cloned().collect();
     let t: String = s.table.name.clone();
     let fields = s.fields.clone()
@@ -235,7 +233,7 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNod
         fields,
         Vec::new(),
         Vec::new(),
-        *hardcode_rows.get::<str>(&t.to_string()).unwrap(),  // TODO get a real number here
+        *hardcode_rows.get::<str>(&t.to_string()).unwrap_or(&10),
     );
     println!("{}", &t.clone());
     graph.push(base.clone());
