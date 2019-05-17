@@ -19,7 +19,7 @@ use std::path::Path;
 
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Column {
     pub name: String,
 }
@@ -92,7 +92,9 @@ impl PartialEq for TestNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TestNodeData {
-    Base,
+    Base {
+        primary_key: Column,
+    },
     InnerJoin,
     OuterJoin,
     Project,
@@ -229,7 +231,9 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNod
     let base = TestNode::new(
         &t.clone(),
         graph.len(),
-        TestNodeData::Base,
+        TestNodeData::Base{
+            primary_key: Column{ name: "".to_string() }
+        },
         fields,
         Vec::new(),
         Vec::new(),

@@ -85,18 +85,20 @@ pub fn make_all_joins(joinable_names: Vec<String>, tables: &HashMap<String, Test
 }
 
 pub fn get_all_ancestors(node: &TestNodeRef) -> Vec<String> {
-    if node.borrow().data == TestNodeData::Base {
-        return Vec::new();
-    }
-    let mut ancs: Vec<String> = node.borrow().ancestors.clone()
-                                             .into_iter()
-                                             .map(|anc| anc.borrow().name.clone())
-                                             .collect();
-    for anc in node.borrow().ancestors.clone() {
-        ancs.append(&mut get_all_ancestors(&anc));
-    }
+    match node.borrow().data {
+        TestNodeData::Base{..} => Vec::new(),
+        _ => {
+            let mut ancs: Vec<String> = node.borrow().ancestors.clone()
+                                                     .into_iter()
+                                                     .map(|anc| anc.borrow().name.clone())
+                                                     .collect();
+            for anc in node.borrow().ancestors.clone() {
+                ancs.append(&mut get_all_ancestors(&anc));
+            }
 
-    ancs
+            ancs
+        }
+    }
 }
 
 pub fn all_acceptable(tables: &Vec<String>, joinable_names: &Vec<String>) -> bool {
@@ -200,11 +202,17 @@ pub fn make_combined_joins(joinable_names: Vec<String>, tables: &HashMap<String,
             if ancestors.len() != 2 {
                 unimplemented!();
             }
-            if ancestors[0].borrow().data == TestNodeData::Base {
-                already_joined_names.push(ancestors[0].borrow().name.clone());
+            match ancestors[0].borrow().data{
+                TestNodeData::Base {..} => {
+                    already_joined_names.push(ancestors[0].borrow().name.clone());
+                },
+                _ => (),
             }
-            if ancestors[1].borrow().data == TestNodeData::Base {
-                already_joined_names.push(ancestors[1].borrow().name.clone());
+            match ancestors[1].borrow().data{
+                TestNodeData::Base {..} => {
+                    already_joined_names.push(ancestors[1].borrow().name.clone());
+                },
+                _ => (),
             }
             previous_join = Some(node.clone());
         }
