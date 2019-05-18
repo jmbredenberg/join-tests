@@ -9,6 +9,8 @@ use std::cmp;
 
 
 
+
+
 pub fn make_inner_join(n1: &TestNodeRef, n2: &TestNodeRef, graph: &mut Vec<TestNodeRef>) -> TestNodeRef {
     let maxrows = cmp::min(n1.borrow().maxrows, n2.borrow().maxrows);  // assuming primary key for now
     let mut columns = n1.borrow().columns.clone();

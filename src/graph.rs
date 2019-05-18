@@ -2,7 +2,7 @@ extern crate nom_sql;
 
 use nom_sql::SqlQuery;
 use nom_sql::{SelectStatement, SelectSpecification, CreateTableStatement, CreateViewStatement,
-    FieldDefinitionExpression, JoinRightSide};
+    FieldDefinitionExpression, JoinRightSide, TableKey};
 use graphviz::graphviz;
 use join;
 use Optimizations;
@@ -93,7 +93,7 @@ impl PartialEq for TestNode {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TestNodeData {
     Base {
-        primary_key: Column,
+        primary_key: Vec<Column>,
     },
     InnerJoin,
     OuterJoin,
@@ -228,18 +228,39 @@ pub fn make_table(s: &CreateTableStatement, tables: &mut HashMap<String, TestNod
                       name: column_spec.column.name.clone()
                   })
                   .collect();
+
+    let primary_keys: Vec<Column> = match s.keys {
+        None => Vec::new(),
+        Some(ref table_keys) => {
+            // we're going to assume there's just one primary key and not handle anything else
+            let mut keys = Vec::new();
+            for table_key in table_keys {
+                match table_key {
+                    TableKey::PrimaryKey(pks) => {
+                        for key in pks {
+                            let pk = Column { name: key.name.clone() };
+                            keys.push(pk);
+                        }
+                    },
+                    _ => (),
+                }
+            }
+            keys
+        },
+    };
+    println!("{} has keys {:?}", &t.clone(), &primary_keys.clone());
+
     let base = TestNode::new(
         &t.clone(),
         graph.len(),
         TestNodeData::Base{
-            primary_key: Column{ name: "".to_string() }
+            primary_key: primary_keys
         },
         fields,
         Vec::new(),
         Vec::new(),
         *hardcode_rows.get::<str>(&t.to_string()).unwrap_or(&10),
     );
-    println!("{}", &t.clone());
     graph.push(base.clone());
     tables.insert(t, base);
 }
